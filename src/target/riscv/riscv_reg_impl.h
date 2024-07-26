@@ -155,6 +155,124 @@ static inline void riscv_reg_impl_init_vector_reg_type(const struct target *targ
 	info->type_vector.reg_type_union = &info->vector_union;
 }
 
+static inline void riscv_reg_impl_init_matrix_reg_type(const struct target *target)
+{
+	RISCV_INFO(info);
+	static struct reg_data_type type_uint8 = { .type = REG_TYPE_UINT8, .id = "uint8" };
+	static struct reg_data_type type_uint16 = { .type = REG_TYPE_UINT16, .id = "uint16" };
+	static struct reg_data_type type_uint32 = { .type = REG_TYPE_UINT32, .id = "uint32" };
+	static struct reg_data_type type_uint64 = { .type = REG_TYPE_UINT64, .id = "uint64" };
+	static struct reg_data_type type_uint128 = { .type = REG_TYPE_UINT128, .id = "uint128" };
+
+	if (riscv_mrlenb(target) == 0)
+		return;
+
+	info->matrix_n_uint8.type = &type_uint8;
+	info->matrix_n_uint8.count = riscv_mrlenb(target);
+	info->type_uint8_matrix_n.type = REG_TYPE_ARCH_DEFINED;
+	info->type_uint8_matrix_n.id = "bytes";
+	info->type_uint8_matrix_n.type_class = REG_TYPE_CLASS_VECTOR;
+	info->type_uint8_matrix_n.reg_type_vector = &info->matrix_n_uint8;
+	info->matrix_m_uint8.type = &info->type_uint8_matrix_n;
+	info->matrix_m_uint8.count = riscv_mlenb(target) / riscv_mrlenb(target);
+
+	info->type_uint8_matrix_m.type = REG_TYPE_ARCH_DEFINED;
+	info->type_uint8_matrix_m.id = "vector8";
+	info->type_uint8_matrix_m.type_class = REG_TYPE_CLASS_VECTOR;
+	info->type_uint8_matrix_m.reg_type_vector = &info->matrix_m_uint8;
+
+	info->matrix_n_uint16.type = &type_uint16;
+	info->matrix_n_uint16.count = riscv_mrlenb(target) / 2;
+	info->type_uint16_matrix_n.type = REG_TYPE_ARCH_DEFINED;
+	info->type_uint16_matrix_n.id = "shorts";
+	info->type_uint16_matrix_n.type_class = REG_TYPE_CLASS_VECTOR;
+	info->type_uint16_matrix_n.reg_type_vector = &info->matrix_n_uint16;
+	info->matrix_m_uint16.type = &info->type_uint16_matrix_n;
+	info->matrix_m_uint16.count = riscv_mlenb(target) / riscv_mrlenb(target);
+	info->type_uint16_matrix_m.type = REG_TYPE_ARCH_DEFINED;
+	info->type_uint16_matrix_m.id = "vector16";
+	info->type_uint16_matrix_m.type_class = REG_TYPE_CLASS_VECTOR;
+	info->type_uint16_matrix_m.reg_type_vector = &info->matrix_m_uint16;
+
+	info->matrix_n_uint32.type = &type_uint32;
+	info->matrix_n_uint32.count = riscv_mrlenb(target) / 4;
+	info->type_uint32_matrix_n.type = REG_TYPE_ARCH_DEFINED;
+	info->type_uint32_matrix_n.id = "words";
+	info->type_uint32_matrix_n.type_class = REG_TYPE_CLASS_VECTOR;
+	info->type_uint32_matrix_n.reg_type_vector = &info->matrix_n_uint32;
+	info->matrix_m_uint32.type = &info->type_uint32_matrix_n;
+	info->matrix_m_uint32.count = riscv_mlenb(target) / riscv_mrlenb(target);
+	info->type_uint32_matrix_m.type = REG_TYPE_ARCH_DEFINED;
+	info->type_uint32_matrix_m.id = "vector32";
+	info->type_uint32_matrix_m.type_class = REG_TYPE_CLASS_VECTOR;
+	info->type_uint32_matrix_m.reg_type_vector = &info->matrix_m_uint32;
+
+	info->matrix_n_uint64.type = &type_uint64;
+	info->matrix_n_uint64.count = riscv_mrlenb(target) / 8;
+	info->type_uint64_matrix_n.type = REG_TYPE_ARCH_DEFINED;
+	info->type_uint64_matrix_n.id = "longs";
+	info->type_uint64_matrix_n.type_class = REG_TYPE_CLASS_VECTOR;
+	info->type_uint64_matrix_n.reg_type_vector = &info->matrix_n_uint64;
+	info->matrix_m_uint64.type = &info->type_uint64_matrix_n;
+	info->matrix_m_uint64.count = riscv_mlenb(target) / riscv_mrlenb(target);
+	info->type_uint64_matrix_m.type = REG_TYPE_ARCH_DEFINED;
+	info->type_uint64_matrix_m.id = "vector64";
+	info->type_uint64_matrix_m.type_class = REG_TYPE_CLASS_VECTOR;
+	info->type_uint64_matrix_m.reg_type_vector = &info->matrix_m_uint64;
+
+	info->matrix_n_uint128.type = &type_uint128;
+	info->matrix_n_uint128.count = riscv_mrlenb(target) / 16;
+	info->type_uint128_matrix_n.type = REG_TYPE_ARCH_DEFINED;
+	info->type_uint128_matrix_n.id = "quads";
+	info->type_uint128_matrix_n.type_class = REG_TYPE_CLASS_VECTOR;
+	info->type_uint128_matrix_n.reg_type_vector = &info->matrix_n_uint128;
+	info->matrix_m_uint128.type = &info->type_uint128_matrix_n;
+	info->matrix_m_uint128.count = riscv_mlenb(target) / riscv_mrlenb(target);
+	info->type_uint128_matrix_m.type = REG_TYPE_ARCH_DEFINED;
+	info->type_uint128_matrix_m.id = "vector128";
+	info->type_uint128_matrix_m.type_class = REG_TYPE_CLASS_VECTOR;
+	info->type_uint128_matrix_m.reg_type_vector = &info->matrix_m_uint128;
+
+	info->matrix_fields[0].name = "b";
+	info->matrix_fields[0].type = &info->type_uint8_matrix_m;
+	if (riscv_mrlenb(target) >= 2) {
+		info->matrix_fields[0].next = info->matrix_fields + 1;
+		info->matrix_fields[1].name = "s";
+		info->matrix_fields[1].type = &info->type_uint16_matrix_m;
+	} else {
+		info->matrix_fields[0].next = NULL;
+	}
+	if (riscv_mrlenb(target) >= 4) {
+		info->matrix_fields[1].next = info->matrix_fields + 2;
+		info->matrix_fields[2].name = "w";
+		info->matrix_fields[2].type = &info->type_uint32_matrix_m;
+	} else {
+		info->matrix_fields[1].next = NULL;
+	}
+	if (riscv_mrlenb(target) >= 8) {
+		info->matrix_fields[2].next = info->matrix_fields + 3;
+		info->matrix_fields[3].name = "l";
+		info->matrix_fields[3].type = &info->type_uint64_matrix_m;
+	} else {
+		info->matrix_fields[2].next = NULL;
+	}
+	if (riscv_mrlenb(target) >= 16) {
+		info->matrix_fields[3].next = info->matrix_fields + 4;
+		info->matrix_fields[4].name = "q";
+		info->matrix_fields[4].type = &info->type_uint128_matrix_m;
+	} else {
+		info->matrix_fields[3].next = NULL;
+	}
+	info->matrix_fields[4].next = NULL;
+
+	info->matrix_union.fields = info->matrix_fields;
+
+	info->type_matrix.type = REG_TYPE_ARCH_DEFINED;
+	info->type_matrix.id = "riscv_matrix";
+	info->type_matrix.type_class = REG_TYPE_CLASS_UNION;
+	info->type_matrix.reg_type_union = &info->matrix_union;
+}
+
 /** Expose additional CSRs, as specified by `riscv_info_t::expose_csr` list. */
 int riscv_reg_impl_expose_csrs(const struct target *target);
 
@@ -175,10 +293,11 @@ static inline bool riscv_reg_impl_gdb_regno_cacheable(enum gdb_regno regno,
 	if (regno == GDB_REGNO_ZERO)
 		return !is_write;
 
-	/* GPRs, FPRs, vector registers are just normal data stores. */
+	/* GPRs, FPRs, vector, matrix registers are just normal data stores. */
 	if (regno <= GDB_REGNO_XPR31 ||
 			(regno >= GDB_REGNO_FPR0 && regno <= GDB_REGNO_FPR31) ||
-			(regno >= GDB_REGNO_V0 && regno <= GDB_REGNO_V31))
+			(regno >= GDB_REGNO_V0 && regno <= GDB_REGNO_V31) ||
+			(regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7))
 		return true;
 
 	/* Most CSRs won't change value on us, but we can't assume it about arbitrary
