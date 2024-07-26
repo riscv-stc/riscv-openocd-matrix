@@ -339,3 +339,39 @@ static uint32_t vslide1down_vx(unsigned int vd, unsigned int vs2,
 	return ((vm & 1) << 25) | inst_rs2(vs2) | inst_rs1(rs1) | inst_rd(vd) | MATCH_VSLIDE1DOWN_VX;
 }
 
+static uint32_t msettype(unsigned int rd, unsigned int rs1) __attribute__((unused));
+static uint32_t msettype(unsigned int rd, unsigned int rs1)
+{
+	return inst_rs1(rs1) | inst_rd(rd) | MATCH_MSETTYPE;
+}
+
+static uint32_t msettilem(unsigned int rd, unsigned int rs1) __attribute__((unused));
+static uint32_t msettilem(unsigned int rd, unsigned int rs1)
+{
+	return inst_rs1(rs1) | inst_rd(rd) | MATCH_MSETTILEM;
+}
+
+static uint32_t msettilen(unsigned int rd, unsigned int rs1) __attribute__((unused));
+static uint32_t msettilen(unsigned int rd, unsigned int rs1)
+{
+	return inst_rs1(rs1) | inst_rd(rd) | MATCH_MSETTILEN;
+}
+
+static uint32_t msettilek(unsigned int rd, unsigned int rs1) __attribute__((unused));
+static uint32_t msettilek(unsigned int rd, unsigned int rs1)
+{
+	return inst_rs1(rs1) | inst_rd(rd) | MATCH_MSETTILEK;
+}
+
+static uint32_t mmv_x_s(unsigned int rd, unsigned int ts1, unsigned int rs2) __attribute__((unused));
+static uint32_t mmv_x_s(unsigned int rd, unsigned int ts1, unsigned int rs2)
+{
+	return inst_rs2(rs2) | inst_rs1(ts1) | inst_rd(rd) | MATCH_MMV_X_S;
+}
+
+static uint32_t mmv_s_x(unsigned int td, unsigned int rs1, unsigned int rs2) __attribute__((unused));
+static uint32_t mmv_s_x(unsigned int td, unsigned int rs1, unsigned int rs2)
+{
+	return inst_rs2(rs2) | inst_rs1(rs1) | inst_rd(td) | MATCH_MMV_S_X;
+}
+

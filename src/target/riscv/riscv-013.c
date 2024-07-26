@@ -63,6 +63,14 @@ static int register_read_direct(struct target *target, riscv_reg_t *value,
 		enum gdb_regno number);
 static int register_write_direct(struct target *target, enum gdb_regno number,
 		riscv_reg_t value);
+static int riscv013_get_register_vector(struct target *target, uint8_t *value,
+		enum gdb_regno regno);
+static int riscv013_get_register_matrix(struct target *target, uint8_t *value,
+		enum gdb_regno regno);
+static int riscv013_set_register_vector(struct target *target,
+		enum gdb_regno regno, const uint8_t *value);
+static int riscv013_set_register_matrix(struct target *target,
+		enum gdb_regno regno, const uint8_t *value);
 static int read_memory(struct target *target, target_addr_t address,
 		uint32_t size, uint32_t count, uint8_t *buffer, uint32_t increment);
 static int write_memory(struct target *target, target_addr_t address,
@@ -920,6 +928,9 @@ static int register_read_abstract_with_size(struct target *target,
 	if (number >= GDB_REGNO_V0 && number <= GDB_REGNO_V31)
 		return ERROR_FAIL;
 
+	if (number >= GDB_REGNO_TR0 && number <= GDB_REGNO_TR7)
+		return ERROR_FAIL;
+
 	uint32_t command = access_register_command(target, number, size,
 			AC_ACCESS_REGISTER_TRANSFER);
 
@@ -1122,12 +1133,25 @@ static int is_vector_reg(enum gdb_regno gdb_regno)
 		gdb_regno == GDB_REGNO_VLENB;
 }
 
+static int is_matrix_reg(enum gdb_regno gdb_regno)
+{
+	return (gdb_regno >= GDB_REGNO_TR0 && gdb_regno <= GDB_REGNO_TR7) ||
+		gdb_regno == GDB_REGNO_MSTART ||
+		gdb_regno == GDB_REGNO_MCSR ||
+		gdb_regno == GDB_REGNO_MTILEM ||
+		gdb_regno == GDB_REGNO_MTILEN ||
+		gdb_regno == GDB_REGNO_MTILEK ||
+		gdb_regno == GDB_REGNO_MTYPE ||
+		gdb_regno == GDB_REGNO_MLENB ||
+		gdb_regno == GDB_REGNO_MRLENB;
+}
+
 static int prep_for_register_access(struct target *target,
 		riscv_reg_t *orig_mstatus, enum gdb_regno regno)
 {
 	assert(orig_mstatus);
 
-	if (!is_fpu_reg(regno) && !is_vector_reg(regno)) {
+	if (!is_fpu_reg(regno) && !is_vector_reg(regno) && !is_matrix_reg(regno)) {
 		/* If we don't assign orig_mstatus, clang static analysis
 		 * complains when this value is passed to
 		 * cleanup_after_register_access(). */
@@ -1147,6 +1171,9 @@ static int prep_for_register_access(struct target *target,
 
 	riscv_reg_t new_mstatus = *orig_mstatus;
 	riscv_reg_t field_mask = is_fpu_reg(regno) ? MSTATUS_FS : MSTATUS_VS;
+	/* TODO: Add MS field in mstatus for matrix extension */
+	#define MSTATUS_MS 0xffffffff
+	field_mask = is_vector_reg(regno) ? MSTATUS_VS : MSTATUS_MS;
 
 	if ((new_mstatus & field_mask) != 0)
 		return ERROR_OK;
@@ -1164,7 +1191,7 @@ static int prep_for_register_access(struct target *target,
 static int cleanup_after_register_access(struct target *target,
 		riscv_reg_t mstatus, enum gdb_regno regno)
 {
-	if (!is_fpu_reg(regno) && !is_vector_reg(regno))
+	if (!is_fpu_reg(regno) && !is_vector_reg(regno) && !is_matrix_reg(regno))
 		/* Mstatus was not changed for this register access. No need to restore it. */
 		return ERROR_OK;
 
@@ -1554,6 +1581,46 @@ static int vl_write_progbuf(struct target *target, riscv_reg_t value)
 	return riscv_program_exec(&program, target);
 }
 
+static int mtype_write_progbuf(struct target *target, riscv_reg_t value)
+{
+	assert(target->state == TARGET_HALTED);
+
+	if (riscv013_reg_save(target, GDB_REGNO_S0) != ERROR_OK)
+		return ERROR_FAIL;
+	if (register_write_abstract(target, GDB_REGNO_S0, value) != ERROR_OK)
+		return ERROR_FAIL;
+
+	struct riscv_program program;
+	riscv_program_init(&program, target);
+	if (riscv_program_insert(&program, msettype(ZERO, S0)) != ERROR_OK)
+		return ERROR_FAIL;
+
+	return riscv_program_exec(&program, target);
+}
+
+static int mtile_write_progbuf(struct target *target, enum gdb_regno number,
+		riscv_reg_t value)
+{
+	assert(target->state == TARGET_HALTED);
+
+	if (riscv013_reg_save(target, GDB_REGNO_S0) != ERROR_OK)
+		return ERROR_FAIL;
+	if (register_write_abstract(target, GDB_REGNO_S0, value) != ERROR_OK)
+		return ERROR_FAIL;
+
+	uint32_t (*msettilex)(unsigned int, unsigned int) =
+		((number == GDB_REGNO_MTILEM) ? msettilem
+		: (number == GDB_REGNO_MTILEN) ? msettilen
+		: msettilek);
+
+	struct riscv_program program;
+	riscv_program_init(&program, target);
+	if (riscv_program_insert(&program, msettilex(ZERO, S0)) != ERROR_OK)
+		return ERROR_FAIL;
+
+	return riscv_program_exec(&program, target);
+}
+
 static int csr_write_progbuf(struct target *target, enum gdb_regno number,
 		riscv_reg_t value)
 {
@@ -1588,6 +1655,11 @@ static int register_write_progbuf(struct target *target, enum gdb_regno number,
 		return vtype_write_progbuf(target, value);
 	else if (number == GDB_REGNO_VL)
 		return vl_write_progbuf(target, value);
+	else if (number == GDB_REGNO_MTYPE)
+		return mtype_write_progbuf(target, value);
+	else if (number == GDB_REGNO_MTILEM || number == GDB_REGNO_MTILEN
+			|| number == GDB_REGNO_MTILEK)
+		return mtile_write_progbuf(target, number, value);
 	else if (number >= GDB_REGNO_CSR0 && number <= GDB_REGNO_CSR4095)
 		return csr_write_progbuf(target, number, value);
 
@@ -2145,6 +2217,24 @@ static int examine(struct target *target)
 		LOG_TARGET_INFO(target, "Vector support with vlenb=%d", r->vlenb);
 	}
 
+	if (register_read_direct(target, &value, GDB_REGNO_MLENB) != ERROR_OK) {
+		if (riscv_supports_extension(target, 'Z'))
+			LOG_TARGET_WARNING(target, "Couldn't read mlenb; matrix register access won't work.");
+		r->mlenb = 0;
+	} else {
+		r->mlenb = value;
+		LOG_TARGET_INFO(target, "Matrix support with mlenb=%d", r->mlenb);
+	}
+
+	if (register_read_direct(target, &value, GDB_REGNO_MRLENB) != ERROR_OK) {
+		if (riscv_supports_extension(target, 'Z'))
+			LOG_TARGET_WARNING(target, "Couldn't read mrlenb; matrix register access won't work.");
+		r->mrlenb = 0;
+	} else {
+		r->mrlenb = value;
+		LOG_TARGET_INFO(target, "Matrix support with mrlenb=%d", r->mrlenb);
+	}
+
 	if (register_read_direct(target, &value, GDB_REGNO_MTOPI) == ERROR_OK) {
 		r->mtopi_readable = true;
 
@@ -2399,8 +2489,108 @@ static int cleanup_after_vector_access(struct target *target,
 	return cleanup_after_register_access(target, mstatus, GDB_REGNO_VL);
 }
 
+static int try_set_msew(struct target *target, unsigned int *debug_msew)
+{
+	RISCV_INFO(r);
+	unsigned int encoded_msew =
+		(riscv_xlen(target) == 64 && r->msew64_supported != YNM_NO) ? 3 : 2;
+
+	/* Set standard element width to match XLEN, for mmv instruction to move
+	 * the least significant bits into a GPR.
+	 */
+	if (riscv_reg_write(target, GDB_REGNO_MTYPE, encoded_msew << 2) != ERROR_OK)
+		return ERROR_FAIL;
+
+	if (encoded_msew == 3 && r->msew64_supported == YNM_MAYBE) {
+		/* Check that it's supported. */
+		riscv_reg_t mtype;
+
+		if (riscv_reg_get(target, &mtype, GDB_REGNO_MTYPE) != ERROR_OK)
+			return ERROR_FAIL;
+		if (mtype >> (riscv_xlen(target) - 1)) {
+			r->msew64_supported = YNM_NO;
+			/* Try again. */
+			return try_set_msew(target, debug_msew);
+		}
+		r->msew64_supported = YNM_YES;
+	}
+	*debug_msew = encoded_msew == 3 ? 64 : 32;
+	return ERROR_OK;
+}
+
+struct riscv_ml_reg {riscv_reg_t mtilem, mtilen, mtilek;};
+
+static int prep_for_matrix_access(struct target *target,
+		riscv_reg_t *orig_mstatus, riscv_reg_t *orig_mtype,
+		struct riscv_ml_reg *orig_ml, struct riscv_ml_reg *debug_ml,
+		unsigned int *debug_msew)
+{
+	assert(orig_mstatus);
+	assert(orig_mtype);
+	assert(orig_ml);
+	assert(debug_ml);
+	assert(debug_msew);
+
+	RISCV_INFO(r);
+	if (target->state != TARGET_HALTED) {
+		LOG_TARGET_ERROR(target,
+				"Unable to access matrix register: target not halted");
+		return ERROR_FAIL;
+	}
+	if (prep_for_register_access(target, orig_mstatus, GDB_REGNO_MTILEM) != ERROR_OK)
+		return ERROR_FAIL;
+
+	/* Save mtype and ml. */
+	if (riscv_reg_get(target, orig_mtype, GDB_REGNO_MTYPE) != ERROR_OK)
+		return ERROR_FAIL;
+	if (riscv_reg_get(target, &orig_ml->mtilem, GDB_REGNO_MTILEM) != ERROR_OK)
+		return ERROR_FAIL;
+	if (riscv_reg_get(target, &orig_ml->mtilen, GDB_REGNO_MTILEN) != ERROR_OK)
+		return ERROR_FAIL;
+	if (riscv_reg_get(target, &orig_ml->mtilek, GDB_REGNO_MTILEK) != ERROR_OK)
+		return ERROR_FAIL;
+
+	if (try_set_msew(target, debug_msew) != ERROR_OK)
+		return ERROR_FAIL;
+	/* Set the number of elements to be updated with results from a matrix
+	 * instruction, for the mmv.x.s and mmv.s.x instruction.
+	 * Set it so the entire TR register is updated. */
+	debug_ml->mtilem = r->mlenb / r->mrlenb;
+	debug_ml->mtilen = DIV_ROUND_UP(r->mrlenb * 8, *debug_msew);
+	debug_ml->mtilek = MIN(debug_ml->mtilem, debug_ml->mtilen);
+	if (riscv_reg_write(target, GDB_REGNO_MTILEM, debug_ml->mtilem) != ERROR_OK)
+		return ERROR_FAIL;
+	if (riscv_reg_write(target, GDB_REGNO_MTILEN, debug_ml->mtilen) != ERROR_OK)
+		return ERROR_FAIL;
+	return riscv_reg_write(target, GDB_REGNO_MTILEK, debug_ml->mtilek);
+}
+
+static int cleanup_after_matrix_access(struct target *target,
+		riscv_reg_t mstatus, riscv_reg_t mtype, struct riscv_ml_reg *ml)
+{
+	/* Restore mtype and ml. */
+	if (riscv_reg_write(target, GDB_REGNO_VTYPE, mtype) != ERROR_OK)
+		return ERROR_FAIL;
+	if (riscv_reg_write(target, GDB_REGNO_MTILEM, ml->mtilem) != ERROR_OK)
+		return ERROR_FAIL;
+	if (riscv_reg_write(target, GDB_REGNO_MTILEN, ml->mtilen) != ERROR_OK)
+		return ERROR_FAIL;
+	if (riscv_reg_write(target, GDB_REGNO_MTILEK, ml->mtilek) != ERROR_OK)
+		return ERROR_FAIL;
+	return cleanup_after_register_access(target, mstatus, GDB_REGNO_MTILEM);
+}
+
 int riscv013_get_register_buf(struct target *target, uint8_t *value,
 		enum gdb_regno regno)
+{
+	if (regno >= GDB_REGNO_V0 && regno <= GDB_REGNO_V31)
+		return riscv013_get_register_vector(target, value, regno);
+	else
+		return riscv013_get_register_matrix(target, value, regno);
+}
+
+static int riscv013_get_register_vector(struct target *target,
+		uint8_t *value, enum gdb_regno regno)
 {
 	assert(regno >= GDB_REGNO_V0 && regno <= GDB_REGNO_V31);
 
@@ -2454,8 +2644,77 @@ int riscv013_get_register_buf(struct target *target, uint8_t *value,
 	return result;
 }
 
+static int riscv013_get_register_matrix(struct target *target,
+		uint8_t *value, enum gdb_regno regno)
+{
+	assert(regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7);
+
+	if (dm013_select_target(target) != ERROR_OK)
+		return ERROR_FAIL;
+
+	riscv_reg_t mstatus, mtype;
+	struct riscv_ml_reg ml, debug_ml;
+	unsigned int debug_msew;
+
+	if (riscv013_reg_save(target, GDB_REGNO_S0) != ERROR_OK)
+		return ERROR_FAIL;
+
+	if (riscv013_reg_save(target, GDB_REGNO_S1) != ERROR_OK)
+		return ERROR_FAIL;
+
+	if (prep_for_matrix_access(target, &mstatus, &mtype, &ml,
+				&debug_ml, &debug_msew) != ERROR_OK)
+		return ERROR_FAIL;
+
+	unsigned int trnum = regno - GDB_REGNO_TR0;
+
+	int result = ERROR_OK;
+	for (unsigned int i = 0; i < debug_ml.mtilem; i++) {
+		for (unsigned int j = 0; j < debug_ml.mtilen; j++) {
+			/* # x[rd] = ts1[i, j], i = rs2[15:0], j = rs2[XLEN-1:16]
+			 * mmv.x.s rd, ts1, rs2 */
+			result = register_write_direct(target, GDB_REGNO_S1,
+						(j & UINT16_MAX) << 16 | (i & UINT16_MAX));
+			if (result != ERROR_OK)
+				goto CLEANUP;
+			/* Can't reuse the same program because riscv_program_exec() adds
+				* ebreak to the end every time. */
+			struct riscv_program program;
+			riscv_program_init(&program, target);
+			riscv_program_insert(&program, mmv_x_s(S0, trnum, S1));
+			result = riscv_program_exec(&program, target);
+			if (result != ERROR_OK) {
+				LOG_TARGET_ERROR(target,
+						"Failed to execute mmv while reading %s",
+						riscv_reg_gdb_regno_name(target, regno));
+				goto CLEANUP;
+			}
+			riscv_reg_t tr;
+			result = register_read_direct(target, &tr, GDB_REGNO_S0);
+			if (result != ERROR_OK)
+				goto CLEANUP;
+			buf_set_u64(value + debug_msew / 8 * (debug_ml.mtilen * i + j), 0,
+					debug_msew, tr);
+		}
+	}
+CLEANUP:
+	if (cleanup_after_matrix_access(target, mstatus, mtype, &ml) != ERROR_OK)
+		return ERROR_FAIL;
+
+	return result;
+}
+
 int riscv013_set_register_buf(struct target *target, enum gdb_regno regno,
 		const uint8_t *value)
+{
+	if (regno >= GDB_REGNO_V0 && regno <= GDB_REGNO_V31)
+		return riscv013_set_register_vector(target, regno, value);
+	else
+		return riscv013_set_register_matrix(target, regno, value);
+}
+
+static int riscv013_set_register_vector(struct target *target,
+		enum gdb_regno regno, const uint8_t *value)
 {
 	assert(regno >= GDB_REGNO_V0 && regno <= GDB_REGNO_V31);
 
@@ -2488,6 +2747,59 @@ int riscv013_set_register_buf(struct target *target, enum gdb_regno regno,
 	}
 
 	if (cleanup_after_vector_access(target, mstatus, vtype, vl) != ERROR_OK)
+		return ERROR_FAIL;
+
+	return result;
+}
+
+static int riscv013_set_register_matrix(struct target *target,
+		enum gdb_regno regno, const uint8_t *value)
+{
+	assert(regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7);
+
+	if (dm013_select_target(target) != ERROR_OK)
+		return ERROR_FAIL;
+
+	riscv_reg_t mstatus, mtype;
+	struct riscv_ml_reg ml, debug_ml;
+	unsigned int debug_msew;
+
+	if (riscv013_reg_save(target, GDB_REGNO_S0) != ERROR_OK)
+		return ERROR_FAIL;
+
+	if (riscv013_reg_save(target, GDB_REGNO_S1) != ERROR_OK)
+		return ERROR_FAIL;
+
+	if (prep_for_matrix_access(target, &mstatus, &mtype, &ml,
+				&debug_ml, &debug_msew) != ERROR_OK)
+		return ERROR_FAIL;
+
+	unsigned int trnum = regno - GDB_REGNO_TR0;
+
+	int result = ERROR_OK;
+	for (unsigned int i = 0; i < debug_ml.mtilem; i++) {
+		for (unsigned int j = 0; j < debug_ml.mtilen; j++) {
+			/* # td[i, j] = x[rs1], i = rs2[15:0], j = rs2[XLEN-1:16]
+			 * mmv.s.x td, rs1, rs2 */
+			result = register_write_direct(target, GDB_REGNO_S1,   
+						(j & UINT16_MAX) << 16 | (i & UINT16_MAX));
+			if (result != ERROR_OK)
+				goto CLEANUP;
+			result = register_write_direct(target, GDB_REGNO_S0,
+						buf_get_u64(value + debug_msew / 8 * (debug_ml.mtilen * i + j),
+								0, debug_msew));
+			if (result != ERROR_OK)
+				goto CLEANUP;
+			struct riscv_program program;
+			riscv_program_init(&program, target);
+			riscv_program_insert(&program, mmv_s_x(trnum, S0, S1));
+			result = riscv_program_exec(&program, target);
+			if (result != ERROR_OK)
+				break;
+		}
+	}
+CLEANUP:
+	if (cleanup_after_matrix_access(target, mstatus, mtype, &ml) != ERROR_OK)
 		return ERROR_FAIL;
 
 	return result;

@@ -138,6 +138,9 @@ struct riscv_info {
 	 * Note that you can have vector support without misa.V set, because
 	 * Zve* extensions implement vector registers without setting misa.V. */
 	unsigned int vlenb;
+	/* Cached value of mlenb and mrlenb. 0 indicates there is no matrix support. */
+	unsigned int mlenb;
+	unsigned int mrlenb;
 
 	bool mtopi_readable;
 	bool mtopei_readable;
@@ -272,6 +275,31 @@ struct riscv_info {
 	struct reg_data_type_union vector_union;
 	struct reg_data_type type_vector;
 
+	/* Storage for matrix register types. */
+	struct reg_data_type_vector matrix_n_uint8;
+	struct reg_data_type_vector matrix_n_uint16;
+	struct reg_data_type_vector matrix_n_uint32;
+	struct reg_data_type_vector matrix_n_uint64;
+	struct reg_data_type_vector matrix_n_uint128;
+	struct reg_data_type type_uint8_matrix_n;
+	struct reg_data_type type_uint16_matrix_n;
+	struct reg_data_type type_uint32_matrix_n;
+	struct reg_data_type type_uint64_matrix_n;
+	struct reg_data_type type_uint128_matrix_n;
+	struct reg_data_type_vector matrix_m_uint8;
+	struct reg_data_type_vector matrix_m_uint16;
+	struct reg_data_type_vector matrix_m_uint32;
+	struct reg_data_type_vector matrix_m_uint64;
+	struct reg_data_type_vector matrix_m_uint128;
+	struct reg_data_type type_uint8_matrix_m;
+	struct reg_data_type type_uint16_matrix_m;
+	struct reg_data_type type_uint32_matrix_m;
+	struct reg_data_type type_uint64_matrix_m;
+	struct reg_data_type type_uint128_matrix_m;
+	struct reg_data_type_union_field matrix_fields[5];
+	struct reg_data_type_union matrix_union;
+	struct reg_data_type type_matrix;
+
 	/* Set when trigger registers are changed by the user. This indicates we need
 	 * to beware that we may hit a trigger that we didn't realize had been set. */
 	bool manual_hwbp_set;
@@ -304,6 +332,7 @@ struct riscv_info {
 	int64_t last_activity;
 
 	yes_no_maybe_t vsew64_supported;
+	yes_no_maybe_t msew64_supported;
 
 	bool range_trigger_fallback_encountered;
 
@@ -391,6 +420,11 @@ unsigned riscv_xlen(const struct target *target);
 
 /* Returns VLENB for the given (or current) hart. */
 unsigned int riscv_vlenb(const struct target *target);
+
+/* Returns MLENB for the given (or current) hart. */
+unsigned int riscv_mlenb(const struct target *target);
+/* Returns MRLENB for the given (or current) hart. */
+unsigned int riscv_mrlenb(const struct target *target);
 
 /*** Support functions for the RISC-V 'RTOS', which provides multihart support
  * without requiring multiple targets.  */
