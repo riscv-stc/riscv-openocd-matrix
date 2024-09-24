@@ -339,3 +339,75 @@ static uint32_t vslide1down_vx(unsigned int vd, unsigned int vs2,
 	return ((vm & 1) << 25) | inst_rs2(vs2) | inst_rs1(rs1) | inst_rd(vd) | MATCH_VSLIDE1DOWN_VX;
 }
 
+static uint32_t msettype(unsigned int rd, unsigned int rs1) __attribute__((unused));
+static uint32_t msettype(unsigned int rd, unsigned int rs1)
+{
+	return inst_rs1(rs1) | inst_rd(rd) | MATCH_MSETTYPE;
+}
+
+static uint32_t msettilem(unsigned int rd, unsigned int rs1) __attribute__((unused));
+static uint32_t msettilem(unsigned int rd, unsigned int rs1)
+{
+	return inst_rs1(rs1) | inst_rd(rd) | MATCH_MSETTILEM;
+}
+
+static uint32_t msettilen(unsigned int rd, unsigned int rs1) __attribute__((unused));
+static uint32_t msettilen(unsigned int rd, unsigned int rs1)
+{
+	return inst_rs1(rs1) | inst_rd(rd) | MATCH_MSETTILEN;
+}
+
+static uint32_t msettilek(unsigned int rd, unsigned int rs1) __attribute__((unused));
+static uint32_t msettilek(unsigned int rd, unsigned int rs1)
+{
+	return inst_rs1(rs1) | inst_rd(rd) | MATCH_MSETTILEK;
+}
+
+static uint32_t mmve32_x_t(unsigned int rd, unsigned int ms1, unsigned int rs2) __attribute__((unused));
+static uint32_t mmve32_x_t(unsigned int rd, unsigned int ms1, unsigned int rs2)
+{
+	return inst_rs2(rs2) | inst_rs1(ms1) | inst_rd(rd) | MATCH_MMVE32_X_T;
+}
+
+static uint32_t mmve64_x_t(unsigned int rd, unsigned int ms1, unsigned int rs2) __attribute__((unused));
+static uint32_t mmve64_x_t(unsigned int rd, unsigned int ms1, unsigned int rs2)
+{
+	return inst_rs2(rs2) | inst_rs1(ms1) | inst_rd(rd) | MATCH_MMVE64_X_T;
+}
+
+static uint32_t mmve32_t_x(unsigned int md, unsigned int rs1, unsigned int rs2) __attribute__((unused));
+static uint32_t mmve32_t_x(unsigned int md, unsigned int rs1, unsigned int rs2)
+{
+	return inst_rs2(rs2) | inst_rs1(rs1) | inst_rd(md) | MATCH_MMVE32_T_X;
+}
+
+static uint32_t mmve64_t_x(unsigned int md, unsigned int rs1, unsigned int rs2) __attribute__((unused));
+static uint32_t mmve64_t_x(unsigned int md, unsigned int rs1, unsigned int rs2)
+{
+	return inst_rs2(rs2) | inst_rs1(rs1) | inst_rd(md) | MATCH_MMVE64_T_X;
+}
+
+static uint32_t mmve32_x_a(unsigned int rd, unsigned int ms1, unsigned int rs2) __attribute__((unused));
+static uint32_t mmve32_x_a(unsigned int rd, unsigned int ms1, unsigned int rs2)
+{
+	return inst_rs2(rs2) | inst_rs1(ms1) | inst_rd(rd) | MATCH_MMVE32_X_A;
+}
+
+static uint32_t mmve64_x_a(unsigned int rd, unsigned int ms1, unsigned int rs2) __attribute__((unused));
+static uint32_t mmve64_x_a(unsigned int rd, unsigned int ms1, unsigned int rs2)
+{
+	return inst_rs2(rs2) | inst_rs1(ms1) | inst_rd(rd) | MATCH_MMVE64_X_A;
+}
+
+static uint32_t mmve32_a_x(unsigned int md, unsigned int rs1, unsigned int rs2) __attribute__((unused));
+static uint32_t mmve32_a_x(unsigned int md, unsigned int rs1, unsigned int rs2)
+{
+	return inst_rs2(rs2) | inst_rs1(rs1) | inst_rd(md) | MATCH_MMVE32_A_X;
+}
+
+static uint32_t mmve64_a_x(unsigned int md, unsigned int rs1, unsigned int rs2) __attribute__((unused));
+static uint32_t mmve64_a_x(unsigned int md, unsigned int rs1, unsigned int rs2)
+{
+	return inst_rs2(rs2) | inst_rs1(rs1) | inst_rd(md) | MATCH_MMVE64_A_X;
+}
+

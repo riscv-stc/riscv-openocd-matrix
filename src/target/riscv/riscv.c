@@ -5418,6 +5418,7 @@ static void riscv_info_init(struct target *target, struct riscv_info *r)
 	INIT_LIST_HEAD(&r->hide_csr);
 
 	r->vsew64_supported = YNM_MAYBE;
+	r->msew64_supported = YNM_MAYBE;
 
 	r->riscv_ebreakm = true;
 	r->riscv_ebreaks = true;
@@ -5532,6 +5533,24 @@ unsigned int riscv_vlenb(const struct target *target)
 {
 	RISCV_INFO(r);
 	return r->vlenb;
+}
+
+unsigned int riscv_mlenb(const struct target *target)
+{
+	RISCV_INFO(r);
+	return r->mlenb;
+}
+
+unsigned int riscv_mrlenb(const struct target *target)
+{
+	RISCV_INFO(r);
+	return r->mrlenb;
+}
+
+unsigned int riscv_mamul(const struct target *target)
+{
+	RISCV_INFO(r);
+	return r->mamul;
 }
 
 static void riscv_invalidate_register_cache(struct target *target)
