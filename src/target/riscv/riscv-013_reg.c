@@ -22,8 +22,7 @@ static int riscv013_reg_get(struct reg *reg)
 		return ERROR_OK;
 	}
 
-	if ((reg->number >= GDB_REGNO_V0 && reg->number <= GDB_REGNO_V31) ||
-			(reg->number >= GDB_REGNO_TR0 && reg->number <= GDB_REGNO_TR7)) {
+	if (reg->number >= GDB_REGNO_V0 && reg->number <= GDB_REGNO_V31) {
 		if (riscv013_get_register_buf(target, reg->value, reg->number) != ERROR_OK)
 			return ERROR_FAIL;
 
@@ -69,8 +68,7 @@ static int riscv013_reg_set(struct reg *reg, uint8_t *buf)
 			return ERROR_FAIL;
 	}
 
-	if ((reg->number >= GDB_REGNO_V0 && reg->number <= GDB_REGNO_V31) ||
-			(reg->number >= GDB_REGNO_TR0 && reg->number <= GDB_REGNO_TR7)) {
+	if (reg->number >= GDB_REGNO_V0 && reg->number <= GDB_REGNO_V31) {
 		if (riscv013_set_register_buf(target, reg->number, buf) != ERROR_OK)
 			return ERROR_FAIL;
 
@@ -87,11 +85,11 @@ static int riscv013_reg_set(struct reg *reg, uint8_t *buf)
 
 static const struct reg_arch_type *riscv013_gdb_regno_reg_type(uint32_t regno)
 {
-	static const struct reg_arch_type riscv013_reg_type = {
+	static const struct reg_arch_type riscv011_reg_type = {
 		.get = riscv013_reg_get,
 		.set = riscv013_reg_set
 	};
-	return &riscv013_reg_type;
+	return &riscv011_reg_type;
 }
 
 static int riscv013_init_reg(struct target *target, uint32_t regno)
@@ -107,7 +105,6 @@ int riscv013_reg_init_all(struct target *target)
 	init_shared_reg_info(target);
 
 	riscv_reg_impl_init_vector_reg_type(target);
-	riscv_reg_impl_init_matrix_reg_type(target);
 
 	for (uint32_t regno = 0; regno < target->reg_cache->num_regs; ++regno)
 		if (riscv013_init_reg(target, regno) != ERROR_OK)

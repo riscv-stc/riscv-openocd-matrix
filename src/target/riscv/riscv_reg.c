@@ -194,10 +194,6 @@ const char *riscv_reg_gdb_regno_name(const struct target *target, enum gdb_regno
 		info->reg_names[regno] = init_reg_name_with_prefix("v", regno - GDB_REGNO_V0);
 		return info->reg_names[regno];
 	}
-	if (regno <= GDB_REGNO_TR7 && regno >= GDB_REGNO_TR0) {
-		info->reg_names[regno] = init_reg_name_with_prefix("tr", regno - GDB_REGNO_TR0);
-		return info->reg_names[regno];
-	}
 	if (regno >= GDB_REGNO_CSR0 && regno <= GDB_REGNO_CSR4095) {
 		init_custom_csr_names(target);
 		info->reg_names[regno] = init_reg_name_with_prefix("csr", regno - GDB_REGNO_CSR0);
@@ -236,12 +232,6 @@ static struct reg_feature *gdb_regno_feature(uint32_t regno)
 			.name = "org.gnu.gdb.riscv.vector"
 		};
 		return &feature_vector;
-	}
-	if (regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7) {
-		static struct reg_feature feature_matrix = {
-			.name = "org.gnu.gdb.riscv.matrix"
-		};
-		return &feature_matrix;
 	}
 	if (regno >= GDB_REGNO_CSR0 && regno <= GDB_REGNO_CSR4095) {
 		static struct reg_feature feature_csr = {
@@ -302,10 +292,6 @@ static struct reg_data_type *gdb_regno_reg_data_type(const struct target *target
 		RISCV_INFO(info);
 		return &info->type_vector;
 	}
-	if (regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7) {
-		RISCV_INFO(info);
-		return &info->type_matrix;
-	}
 	return NULL;
 }
 
@@ -324,8 +310,6 @@ static const char *gdb_regno_group(uint32_t regno)
 		return "csr";
 	if (regno >= GDB_REGNO_V0 && regno <= GDB_REGNO_V31)
 		return "vector";
-	if (regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7)
-		return "matrix";
 	assert(regno >= GDB_REGNO_COUNT);
 	return "custom";
 }
@@ -336,8 +320,6 @@ uint32_t gdb_regno_size(const struct target *target, uint32_t regno)
 		return riscv_supports_extension(target, 'D') ? 64 : 32;
 	if (regno >= GDB_REGNO_V0 && regno <= GDB_REGNO_V31)
 		return riscv_vlenb(target) * 8;
-	if (regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7)
-		return riscv_mlenb(target) * 8;
 	if (regno == GDB_REGNO_PRIV)
 		return 8;
 	if (regno >= GDB_REGNO_CSR0 && regno <= GDB_REGNO_CSR4095) {
@@ -362,11 +344,6 @@ uint32_t gdb_regno_size(const struct target *target, uint32_t regno)
 static bool vlenb_exists(const struct target *target)
 {
 	return riscv_vlenb(target) != 0;
-}
-
-static bool mlenb_exists(const struct target *target)
-{
-	return riscv_mlenb(target) != 0;
 }
 
 static bool mtopi_exists(const struct target *target)
@@ -411,8 +388,6 @@ static bool gdb_regno_exist(const struct target *target, uint32_t regno)
 		return riscv_supports_extension(target, 'F');
 	if (regno >= GDB_REGNO_V0 && regno <= GDB_REGNO_V31)
 		return vlenb_exists(target);
-	if (regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7)
-		return mlenb_exists(target);
 	if (regno >= GDB_REGNO_COUNT)
 		return true;
 	assert(regno >= GDB_REGNO_CSR0 && regno <= GDB_REGNO_CSR4095);

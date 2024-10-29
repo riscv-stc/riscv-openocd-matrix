@@ -183,8 +183,6 @@ int riscv_program_ebreak(struct riscv_program *p)
 {
 	struct target *target = p->target;
 	RISCV_INFO(r);
-	if (p->progbuf[p->instruction_count - 1] == ebreak())
-		return ERROR_OK;
 	if (p->instruction_count == riscv_progbuf_size(p->target) &&
 			r->impebreak) {
 		return ERROR_OK;
