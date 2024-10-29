@@ -5547,6 +5547,12 @@ unsigned int riscv_mrlenb(const struct target *target)
 	return r->mrlenb;
 }
 
+unsigned int riscv_mamul(const struct target *target)
+{
+	RISCV_INFO(r);
+	return r->mamul;
+}
+
 static void riscv_invalidate_register_cache(struct target *target)
 {
 	/* Do not invalidate the register cache if it is not yet set up

@@ -138,9 +138,11 @@ struct riscv_info {
 	 * Note that you can have vector support without misa.V set, because
 	 * Zve* extensions implement vector registers without setting misa.V. */
 	unsigned int vlenb;
-	/* Cached value of mlenb and mrlenb. 0 indicates there is no matrix support. */
+	/* Cached value of mlenb, mrlenb and mamul. 0 indicates there is no matrix
+	 * support. MLEN <= 2^32, MRLEN <= 2^16 and MAMUL is 1, 2, 4 or 8. */
 	unsigned int mlenb;
 	unsigned int mrlenb;
+	unsigned int mamul;
 
 	bool mtopi_readable;
 	bool mtopei_readable;
@@ -276,29 +278,31 @@ struct riscv_info {
 	struct reg_data_type type_vector;
 
 	/* Storage for matrix register types. */
-	struct reg_data_type_vector matrix_n_uint8;
-	struct reg_data_type_vector matrix_n_uint16;
-	struct reg_data_type_vector matrix_n_uint32;
-	struct reg_data_type_vector matrix_n_uint64;
-	struct reg_data_type_vector matrix_n_uint128;
-	struct reg_data_type type_uint8_matrix_n;
-	struct reg_data_type type_uint16_matrix_n;
-	struct reg_data_type type_uint32_matrix_n;
-	struct reg_data_type type_uint64_matrix_n;
-	struct reg_data_type type_uint128_matrix_n;
-	struct reg_data_type_vector matrix_m_uint8;
-	struct reg_data_type_vector matrix_m_uint16;
-	struct reg_data_type_vector matrix_m_uint32;
-	struct reg_data_type_vector matrix_m_uint64;
-	struct reg_data_type_vector matrix_m_uint128;
-	struct reg_data_type type_uint8_matrix_m;
-	struct reg_data_type type_uint16_matrix_m;
-	struct reg_data_type type_uint32_matrix_m;
-	struct reg_data_type type_uint64_matrix_m;
-	struct reg_data_type type_uint128_matrix_m;
-	struct reg_data_type_union_field matrix_fields[5];
-	struct reg_data_type_union matrix_union;
-	struct reg_data_type type_matrix;
+	struct matrix_reg_type {
+		struct reg_data_type_vector matrix_n_uint8;
+		struct reg_data_type_vector matrix_n_uint16;
+		struct reg_data_type_vector matrix_n_uint32;
+		struct reg_data_type_vector matrix_n_uint64;
+		struct reg_data_type_vector matrix_n_uint128;
+		struct reg_data_type type_uint8_matrix_n;
+		struct reg_data_type type_uint16_matrix_n;
+		struct reg_data_type type_uint32_matrix_n;
+		struct reg_data_type type_uint64_matrix_n;
+		struct reg_data_type type_uint128_matrix_n;
+		struct reg_data_type_vector matrix_m_uint8;
+		struct reg_data_type_vector matrix_m_uint16;
+		struct reg_data_type_vector matrix_m_uint32;
+		struct reg_data_type_vector matrix_m_uint64;
+		struct reg_data_type_vector matrix_m_uint128;
+		struct reg_data_type type_uint8_matrix_m;
+		struct reg_data_type type_uint16_matrix_m;
+		struct reg_data_type type_uint32_matrix_m;
+		struct reg_data_type type_uint64_matrix_m;
+		struct reg_data_type type_uint128_matrix_m;
+		struct reg_data_type_union_field matrix_fields[5];
+		struct reg_data_type_union matrix_union;
+		struct reg_data_type type;
+	} type_m_tile, type_m_acc;
 
 	/* Set when trigger registers are changed by the user. This indicates we need
 	 * to beware that we may hit a trigger that we didn't realize had been set. */
@@ -425,6 +429,8 @@ unsigned int riscv_vlenb(const struct target *target);
 unsigned int riscv_mlenb(const struct target *target);
 /* Returns MRLENB for the given (or current) hart. */
 unsigned int riscv_mrlenb(const struct target *target);
+/* Returns MAMUL for the given (or current) hart. */
+unsigned int riscv_mamul(const struct target *target);
 
 /*** Support functions for the RISC-V 'RTOS', which provides multihart support
  * without requiring multiple targets.  */

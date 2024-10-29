@@ -931,6 +931,9 @@ static int register_read_abstract_with_size(struct target *target,
 	if (number >= GDB_REGNO_TR0 && number <= GDB_REGNO_TR7)
 		return ERROR_FAIL;
 
+	if (number >= GDB_REGNO_ACC0 && number <= GDB_REGNO_ACC7)
+		return ERROR_FAIL;
+
 	uint32_t command = access_register_command(target, number, size,
 			AC_ACCESS_REGISTER_TRANSFER);
 
@@ -1136,14 +1139,26 @@ static int is_vector_reg(enum gdb_regno gdb_regno)
 static int is_matrix_reg(enum gdb_regno gdb_regno)
 {
 	return (gdb_regno >= GDB_REGNO_TR0 && gdb_regno <= GDB_REGNO_TR7) ||
+		(gdb_regno >= GDB_REGNO_ACC0 && gdb_regno <= GDB_REGNO_ACC7) ||
 		gdb_regno == GDB_REGNO_MSTART ||
 		gdb_regno == GDB_REGNO_MCSR ||
+		gdb_regno == GDB_REGNO_MTYPE ||
 		gdb_regno == GDB_REGNO_MTILEM ||
 		gdb_regno == GDB_REGNO_MTILEN ||
 		gdb_regno == GDB_REGNO_MTILEK ||
-		gdb_regno == GDB_REGNO_MTYPE ||
 		gdb_regno == GDB_REGNO_MLENB ||
-		gdb_regno == GDB_REGNO_MRLENB;
+		gdb_regno == GDB_REGNO_MRLENB ||
+		gdb_regno == GDB_REGNO_MAMUL;
+}
+
+static int is_matrix_tile_reg(enum gdb_regno gdb_regno)
+{
+	return gdb_regno >= GDB_REGNO_TR0 && gdb_regno <= GDB_REGNO_TR7;
+}
+
+static int is_matrix_acc_reg(enum gdb_regno gdb_regno)
+{
+	return gdb_regno >= GDB_REGNO_ACC0 && gdb_regno <= GDB_REGNO_ACC7;
 }
 
 static int prep_for_register_access(struct target *target,
@@ -1609,9 +1624,9 @@ static int mtile_write_progbuf(struct target *target, enum gdb_regno number,
 		return ERROR_FAIL;
 
 	uint32_t (*msettilex)(unsigned int, unsigned int) =
-		((number == GDB_REGNO_MTILEM) ? msettilem
-		: (number == GDB_REGNO_MTILEN) ? msettilen
-		: msettilek);
+		((number == GDB_REGNO_MTILEM) ? msettilem :
+		(number == GDB_REGNO_MTILEN) ? msettilen :
+		msettilek);
 
 	struct riscv_program program;
 	riscv_program_init(&program, target);
@@ -1657,8 +1672,8 @@ static int register_write_progbuf(struct target *target, enum gdb_regno number,
 		return vl_write_progbuf(target, value);
 	else if (number == GDB_REGNO_MTYPE)
 		return mtype_write_progbuf(target, value);
-	else if (number == GDB_REGNO_MTILEM || number == GDB_REGNO_MTILEN
-			|| number == GDB_REGNO_MTILEK)
+	else if (number == GDB_REGNO_MTILEM || number == GDB_REGNO_MTILEN ||
+			number == GDB_REGNO_MTILEK)
 		return mtile_write_progbuf(target, number, value);
 	else if (number >= GDB_REGNO_CSR0 && number <= GDB_REGNO_CSR4095)
 		return csr_write_progbuf(target, number, value);
@@ -2222,17 +2237,42 @@ static int examine(struct target *target)
 			LOG_TARGET_WARNING(target, "Couldn't read mlenb; matrix register access won't work.");
 		r->mlenb = 0;
 	} else {
-		r->mlenb = value;
-		LOG_TARGET_INFO(target, "Matrix support with mlenb=%d", r->mlenb);
+		if (value > UINT32_MAX / 8) {
+			LOG_TARGET_WARNING(target, "Too large mlenb; matrix register access won't work.");
+			r->mlenb = 0;
+		} else {
+			r->mlenb = value;
+			LOG_TARGET_INFO(target, "Matrix support with mlenb=%u", r->mlenb);
+		}
 	}
 
 	if (register_read_direct(target, &value, GDB_REGNO_MRLENB) != ERROR_OK) {
 		if (riscv_supports_extension(target, 'Z'))
 			LOG_TARGET_WARNING(target, "Couldn't read mrlenb; matrix register access won't work.");
-		r->mrlenb = 0;
+		r->mrlenb = r->mlenb = 0;
 	} else {
-		r->mrlenb = value;
-		LOG_TARGET_INFO(target, "Matrix support with mrlenb=%d", r->mrlenb);
+		if (value > r->mlenb) {
+			LOG_TARGET_WARNING(target, "Too large mrlenb; matrix register access won't work.");
+			r->mrlenb = r->mlenb = 0;
+		} else {
+			r->mrlenb = value;
+			LOG_TARGET_INFO(target, "Matrix support with mrlenb=%u", r->mrlenb);
+		}
+	}
+
+	if (register_read_direct(target, &value, GDB_REGNO_MAMUL) != ERROR_OK) {
+		if (riscv_supports_extension(target, 'Z'))
+			LOG_TARGET_WARNING(target, "Couldn't read mamul; matrix register access won't work.");
+		r->mamul = r->mlenb = r->mrlenb = 0;
+	} else {
+		if ((value != 0 && value != 1 && value != 2 && value != 4 && value != 8) ||
+				value > UINT32_MAX / r->mlenb / 8) {
+			LOG_TARGET_WARNING(target, "Illegal or too large mamul; matrix register access won't work.");
+			r->mamul = r->mlenb = r->mrlenb = 0;
+		} else {
+			r->mamul = value;
+			LOG_TARGET_INFO(target, "Matrix support with mamul=%u", r->mamul);
+		}
 	}
 
 	if (register_read_direct(target, &value, GDB_REGNO_MTOPI) == ERROR_OK) {
@@ -2498,7 +2538,7 @@ static int try_set_msew(struct target *target, unsigned int *debug_msew)
 	/* Set standard element width to match XLEN, for mmv instruction to move
 	 * the least significant bits into a GPR.
 	 */
-	if (riscv_reg_write(target, GDB_REGNO_MTYPE, encoded_msew << 2) != ERROR_OK)
+	if (riscv_reg_write(target, GDB_REGNO_MTYPE, encoded_msew) != ERROR_OK)
 		return ERROR_FAIL;
 
 	if (encoded_msew == 3 && r->msew64_supported == YNM_MAYBE) {
@@ -2523,7 +2563,7 @@ struct riscv_ml_reg {riscv_reg_t mtilem, mtilen, mtilek;};
 static int prep_for_matrix_access(struct target *target,
 		riscv_reg_t *orig_mstatus, riscv_reg_t *orig_mtype,
 		struct riscv_ml_reg *orig_ml, struct riscv_ml_reg *debug_ml,
-		unsigned int *debug_msew)
+		unsigned int *debug_msew, riscv_reg_t mamul)
 {
 	assert(orig_mstatus);
 	assert(orig_mtype);
@@ -2556,7 +2596,7 @@ static int prep_for_matrix_access(struct target *target,
 	 * instruction, for the mmv.x.s and mmv.s.x instruction.
 	 * Set it so the entire TR register is updated. */
 	debug_ml->mtilem = r->mlenb / r->mrlenb;
-	debug_ml->mtilen = DIV_ROUND_UP(r->mrlenb * 8, *debug_msew);
+	debug_ml->mtilen = DIV_ROUND_UP(r->mrlenb * mamul * 8, *debug_msew);
 	debug_ml->mtilek = MIN(debug_ml->mtilem, debug_ml->mtilen);
 	if (riscv_reg_write(target, GDB_REGNO_MTILEM, debug_ml->mtilem) != ERROR_OK)
 		return ERROR_FAIL;
@@ -2647,12 +2687,12 @@ static int riscv013_get_register_vector(struct target *target,
 static int riscv013_get_register_matrix(struct target *target,
 		uint8_t *value, enum gdb_regno regno)
 {
-	assert(regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7);
+	assert(regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_ACC7);
 
 	if (dm013_select_target(target) != ERROR_OK)
 		return ERROR_FAIL;
 
-	riscv_reg_t mstatus, mtype;
+	riscv_reg_t mstatus, mtype, mamul;
 	struct riscv_ml_reg ml, debug_ml;
 	unsigned int debug_msew;
 
@@ -2662,11 +2702,17 @@ static int riscv013_get_register_matrix(struct target *target,
 	if (riscv013_reg_save(target, GDB_REGNO_S1) != ERROR_OK)
 		return ERROR_FAIL;
 
+	mamul = is_matrix_acc_reg(regno) ? riscv_mamul(target) : 1;
 	if (prep_for_matrix_access(target, &mstatus, &mtype, &ml,
-				&debug_ml, &debug_msew) != ERROR_OK)
+				&debug_ml, &debug_msew, mamul) != ERROR_OK)
 		return ERROR_FAIL;
 
-	unsigned int trnum = regno - GDB_REGNO_TR0;
+	unsigned int mnum = is_matrix_tile_reg(regno) ?
+			regno - GDB_REGNO_TR0 : regno - GDB_REGNO_ACC0;
+
+	uint32_t (*mmv_x_s)(uint32_t, uint32_t, uint32_t) = (debug_msew == 32) ?
+			(is_matrix_tile_reg(regno) ? mmve32_x_t : mmve32_x_a) :
+			(is_matrix_tile_reg(regno) ? mmve64_x_t : mmve64_x_a);
 
 	int result = ERROR_OK;
 	for (unsigned int i = 0; i < debug_ml.mtilem; i++) {
@@ -2681,7 +2727,7 @@ static int riscv013_get_register_matrix(struct target *target,
 				* ebreak to the end every time. */
 			struct riscv_program program;
 			riscv_program_init(&program, target);
-			riscv_program_insert(&program, mmv_x_s(S0, trnum, S1));
+			riscv_program_insert(&program, mmv_x_s(S0, mnum, S1));
 			result = riscv_program_exec(&program, target);
 			if (result != ERROR_OK) {
 				LOG_TARGET_ERROR(target,
@@ -2689,12 +2735,12 @@ static int riscv013_get_register_matrix(struct target *target,
 						riscv_reg_gdb_regno_name(target, regno));
 				goto CLEANUP;
 			}
-			riscv_reg_t tr;
-			result = register_read_direct(target, &tr, GDB_REGNO_S0);
+			riscv_reg_t mxr;
+			result = register_read_direct(target, &mxr, GDB_REGNO_S0);
 			if (result != ERROR_OK)
 				goto CLEANUP;
 			buf_set_u64(value + debug_msew / 8 * (debug_ml.mtilen * i + j), 0,
-					debug_msew, tr);
+					debug_msew, mxr);
 		}
 	}
 CLEANUP:
@@ -2755,12 +2801,12 @@ static int riscv013_set_register_vector(struct target *target,
 static int riscv013_set_register_matrix(struct target *target,
 		enum gdb_regno regno, const uint8_t *value)
 {
-	assert(regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7);
+	assert(regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_ACC7);
 
 	if (dm013_select_target(target) != ERROR_OK)
 		return ERROR_FAIL;
 
-	riscv_reg_t mstatus, mtype;
+	riscv_reg_t mstatus, mtype, mamul;
 	struct riscv_ml_reg ml, debug_ml;
 	unsigned int debug_msew;
 
@@ -2770,11 +2816,17 @@ static int riscv013_set_register_matrix(struct target *target,
 	if (riscv013_reg_save(target, GDB_REGNO_S1) != ERROR_OK)
 		return ERROR_FAIL;
 
+	mamul = is_matrix_acc_reg(regno) ? riscv_mamul(target) : 1;
 	if (prep_for_matrix_access(target, &mstatus, &mtype, &ml,
-				&debug_ml, &debug_msew) != ERROR_OK)
+				&debug_ml, &debug_msew, mamul) != ERROR_OK)
 		return ERROR_FAIL;
 
-	unsigned int trnum = regno - GDB_REGNO_TR0;
+	unsigned int mnum = is_matrix_tile_reg(regno) ?
+			regno - GDB_REGNO_TR0 : regno - GDB_REGNO_ACC0;
+
+	uint32_t (*mmv_s_x)(uint32_t, uint32_t, uint32_t) = (debug_msew == 32) ?
+			(is_matrix_tile_reg(regno) ? mmve32_t_x : mmve32_a_x) :
+			(is_matrix_tile_reg(regno) ? mmve64_t_x : mmve64_a_x);
 
 	int result = ERROR_OK;
 	for (unsigned int i = 0; i < debug_ml.mtilem; i++) {
@@ -2792,7 +2844,7 @@ static int riscv013_set_register_matrix(struct target *target,
 				goto CLEANUP;
 			struct riscv_program program;
 			riscv_program_init(&program, target);
-			riscv_program_insert(&program, mmv_s_x(trnum, S0, S1));
+			riscv_program_insert(&program, mmv_s_x(mnum, S0, S1));
 			result = riscv_program_exec(&program, target);
 			if (result != ERROR_OK)
 				break;

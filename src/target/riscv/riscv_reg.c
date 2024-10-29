@@ -198,6 +198,10 @@ const char *riscv_reg_gdb_regno_name(const struct target *target, enum gdb_regno
 		info->reg_names[regno] = init_reg_name_with_prefix("tr", regno - GDB_REGNO_TR0);
 		return info->reg_names[regno];
 	}
+	if (regno <= GDB_REGNO_ACC7 && regno >= GDB_REGNO_ACC0) {
+		info->reg_names[regno] = init_reg_name_with_prefix("acc", regno - GDB_REGNO_ACC0);
+		return info->reg_names[regno];
+	}
 	if (regno >= GDB_REGNO_CSR0 && regno <= GDB_REGNO_CSR4095) {
 		init_custom_csr_names(target);
 		info->reg_names[regno] = init_reg_name_with_prefix("csr", regno - GDB_REGNO_CSR0);
@@ -238,10 +242,16 @@ static struct reg_feature *gdb_regno_feature(uint32_t regno)
 		return &feature_vector;
 	}
 	if (regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7) {
-		static struct reg_feature feature_matrix = {
-			.name = "org.gnu.gdb.riscv.matrix"
+		static struct reg_feature feature_matrix_tile = {
+			.name = "org.gnu.gdb.riscv.matrix_tile"
 		};
-		return &feature_matrix;
+		return &feature_matrix_tile;
+	}
+	if (regno >= GDB_REGNO_ACC0 && regno <= GDB_REGNO_ACC7) {
+		static struct reg_feature feature_matrix_acc = {
+			.name = "org.gnu.gdb.riscv.matrix_acc"
+		};
+		return &feature_matrix_acc;
 	}
 	if (regno >= GDB_REGNO_CSR0 && regno <= GDB_REGNO_CSR4095) {
 		static struct reg_feature feature_csr = {
@@ -304,7 +314,11 @@ static struct reg_data_type *gdb_regno_reg_data_type(const struct target *target
 	}
 	if (regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7) {
 		RISCV_INFO(info);
-		return &info->type_matrix;
+		return &info->type_m_tile.type;
+	}
+	if (regno >= GDB_REGNO_ACC0 && regno <= GDB_REGNO_ACC7) {
+		RISCV_INFO(info);
+		return &info->type_m_acc.type;
 	}
 	return NULL;
 }
@@ -326,6 +340,8 @@ static const char *gdb_regno_group(uint32_t regno)
 		return "vector";
 	if (regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7)
 		return "matrix";
+	if (regno >= GDB_REGNO_ACC0 && regno <= GDB_REGNO_ACC7)
+		return "matrix";
 	assert(regno >= GDB_REGNO_COUNT);
 	return "custom";
 }
@@ -338,6 +354,8 @@ uint32_t gdb_regno_size(const struct target *target, uint32_t regno)
 		return riscv_vlenb(target) * 8;
 	if (regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7)
 		return riscv_mlenb(target) * 8;
+	if (regno >= GDB_REGNO_ACC0 && regno <= GDB_REGNO_ACC7)
+		return riscv_mlenb(target) * riscv_mamul(target) * 8;
 	if (regno == GDB_REGNO_PRIV)
 		return 8;
 	if (regno >= GDB_REGNO_CSR0 && regno <= GDB_REGNO_CSR4095) {
@@ -367,6 +385,11 @@ static bool vlenb_exists(const struct target *target)
 static bool mlenb_exists(const struct target *target)
 {
 	return riscv_mlenb(target) != 0;
+}
+
+static bool mamul_exists(const struct target *target)
+{
+	return riscv_mamul(target) != 0;
 }
 
 static bool mtopi_exists(const struct target *target)
@@ -413,6 +436,8 @@ static bool gdb_regno_exist(const struct target *target, uint32_t regno)
 		return vlenb_exists(target);
 	if (regno >= GDB_REGNO_TR0 && regno <= GDB_REGNO_TR7)
 		return mlenb_exists(target);
+	if (regno >= GDB_REGNO_ACC0 && regno <= GDB_REGNO_ACC7)
+		return mlenb_exists(target) && mamul_exists(target);
 	if (regno >= GDB_REGNO_COUNT)
 		return true;
 	assert(regno >= GDB_REGNO_CSR0 && regno <= GDB_REGNO_CSR4095);
@@ -430,6 +455,16 @@ static bool gdb_regno_exist(const struct target *target, uint32_t regno)
 		case CSR_VTYPE:
 		case CSR_VLENB:
 			return vlenb_exists(target);
+		case CSR_MSTART:
+		case CSR_MCSR:
+		case CSR_MTYPE:
+		case CSR_MTILEM:
+		case CSR_MTILEN:
+		case CSR_MTILEK:
+		case CSR_MLENB:
+		case CSR_MRLENB:
+		case CSR_MAMUL:
+			return mlenb_exists(target);
 		case CSR_SCOUNTEREN:
 		case CSR_SSTATUS:
 		case CSR_STVEC:
@@ -960,7 +995,7 @@ int riscv_reg_get(struct target *target, riscv_reg_t *value,
 	RISCV_INFO(r);
 	assert(r);
 	if (r->dtm_version == DTM_DTMCS_VERSION_0_11)
-		return riscv013_get_register(target, value, regid);
+		return riscv011_get_register(target, value, regid);
 
 	keep_alive();
 

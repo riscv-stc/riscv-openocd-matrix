@@ -23,7 +23,8 @@ static int riscv013_reg_get(struct reg *reg)
 	}
 
 	if ((reg->number >= GDB_REGNO_V0 && reg->number <= GDB_REGNO_V31) ||
-			(reg->number >= GDB_REGNO_TR0 && reg->number <= GDB_REGNO_TR7)) {
+			(reg->number >= GDB_REGNO_TR0 && reg->number <= GDB_REGNO_TR7) ||
+			(reg->number >= GDB_REGNO_ACC0 && reg->number <= GDB_REGNO_ACC7)) {
 		if (riscv013_get_register_buf(target, reg->value, reg->number) != ERROR_OK)
 			return ERROR_FAIL;
 
@@ -70,7 +71,8 @@ static int riscv013_reg_set(struct reg *reg, uint8_t *buf)
 	}
 
 	if ((reg->number >= GDB_REGNO_V0 && reg->number <= GDB_REGNO_V31) ||
-			(reg->number >= GDB_REGNO_TR0 && reg->number <= GDB_REGNO_TR7)) {
+			(reg->number >= GDB_REGNO_TR0 && reg->number <= GDB_REGNO_TR7) ||
+			(reg->number >= GDB_REGNO_ACC0 && reg->number <= GDB_REGNO_ACC7)) {
 		if (riscv013_set_register_buf(target, reg->number, buf) != ERROR_OK)
 			return ERROR_FAIL;
 
